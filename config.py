@@ -24,9 +24,9 @@ def get_args():
     parser.add_argument("--pooling", type=str, default="cls", choices=["cls", "mean", "max"],
                         help="句子向量化方式：cls / mean（均值池化）/ max（最大池化）")
     parser.add_argument("--loss", type=str, default="cosine", choices=["cosine", "triplet"],
-                        help="损失函数类型：cosine（余弦嵌入损失）或 triplet（三元组损失）")
+                        help="损失函数：cosine / triplet（classify 模式下忽略）")
     parser.add_argument("--classify", action="store_true",
-                        help="使用分类头（仅 CrossEncoder，加二分类线性层 + CrossEntropyLoss）")
+                        help="使用分类头（仅 CrossEncoder，[CLS]+Linear+CrossEntropyLoss，不与 --loss 同时使用）")
 
     # -------- 训练超参数 --------
     parser.add_argument("--epochs", type=int, default=1000,
