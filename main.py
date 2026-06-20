@@ -87,7 +87,8 @@ def main():
     print(f"{'='*60}")
     print(f"  编码器: {args.encoder}")
     print(f"  池化方式: {args.pooling}")
-    print(f"  损失函数: {args.loss} (margin={args.margin})")
+    loss_str = f"分类头(CrossEntropy)" if args.classify else f"{args.loss} (margin={args.margin})"
+    print(f"  损失函数: {loss_str}")
     print(f"  训练轮数: {args.epochs}")
     print(f"  批次大小: {args.batch_size}")
     print(f"  学习率: {args.learning_rate}")
@@ -119,7 +120,8 @@ def main():
 
     # 6. 创建训练器
     # run_name: "{encoder}_{pooling}_{loss}"，确保不同参数组合输出不覆盖
-    run_name = f"{args.encoder}_{args.pooling}_{args.loss}"
+    mode_tag = "classify" if args.classify else args.loss
+    run_name = f"{args.encoder}_{args.pooling}_{mode_tag}"
     trainer = Trainer(model, args, run_name=run_name)
 
     # 6.5 从 checkpoint 恢复训练（如果指定了 --resume）
