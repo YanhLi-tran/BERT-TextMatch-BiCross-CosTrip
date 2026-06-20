@@ -1,0 +1,24 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.codegraph/
+.reasonix/
+reasonix.toml
+
+# 训练产出（checkpoint、可视化、日志）
+outputs/
+
+# 数据集（体积大，需单独下载）
+data/*
+!data/bq_corpus/
+
+# 系统文件
+.DS_Store
+Thumbs.db
