@@ -87,7 +87,21 @@ python main.py `
     --margin 0.0
 ```
 
-### 1.6 CrossEncoder + TripletLoss
+### 1.6 CrossEncoder + CosineEmbeddingLoss（推荐尝鲜）
+
+```powershell
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ CrossEncoder 利用跨注意力交互，理论上比 BiEncoder 效果更好          │
+# │ poolinig='mean' 通过 token_type_ids 分开池化，获得独立句表示        │
+# └─────────────────────────────────────────────────────────────────────┘
+python main.py `
+    --encoder crossencoder `
+    --pooling mean `
+    --loss cosine `
+    --margin 0.0
+```
+
+### 1.7 CrossEncoder + TripletLoss（不推荐）
 
 ```powershell
 # ┌─────────────────────────────────────────────────────────────────────┐
@@ -307,6 +321,78 @@ outputs/biencoder_cls_cosine/eval/
 | `--output_dir` | checkpoint所在目录/eval | 图表输出目录 |
 | `--threshold` | None | 余弦阈值，None 则自动搜索最优值 |
 | `--batch_size` | 64 | 评估批次大小 |
+
+---
+
+## 7.6 BiEncoder vs CrossEncoder 逐对推理速度对比
+
+`evaluate.py` 会自动计时，跑完两个模型的评估后直接比对输出中的 **ms/对** 即可。
+
+### 对比命令
+
+```powershell
+# 1. BiEncoder + Mean 推理速度
+python evaluate.py `
+    --checkpoint outputs/biencoder_mean_cosine/best_model.pt `
+    --data_split test
+
+# 2. CrossEncoder + Mean 推理速度
+python evaluate.py `
+    --checkpoint outputs/crossencoder_mean_cosine/best_model.pt `
+    --data_split test
+```
+
+### 输出示例
+
+```
+[推理速度] 总样本: 8620 对 | 总耗时: 12.34s | 698 对/秒 | 1.43 ms/对
+```
+
+### 说明
+
+- 这是 **逐对推理** 速度（每对 (s1, s2) 都要过一遍模型），不是实际线上场景
+- BiEncoder 真正的速度优势在于 **预编码 + 向量检索**（候选句离线编码好，查询时只编码 1 条），这个计时不体现那部分优势
+- 速度结果会保存在 `eval_summary.json` 的 `infer_speed` 字段中，方便后续对比
+
+### 7.7 预编码 + 向量检索模式（仅 BiEncoder）
+
+模拟真实线上场景：先将所有候选句子预编码存库，查询时只编码 1 条 query，通过 FAISS 向量检索找到最相似的候选。
+
+```powershell
+# 首次：编码 8620 对句子并缓存
+python evaluate.py --checkpoint outputs/biencoder_mean_cosine/best_model.pt --data_split test --mode retrieval
+
+# 后续：直接加载缓存，秒级出结果
+python evaluate.py --checkpoint outputs/biencoder_mean_cosine/best_model.pt --data_split test --mode retrieval
+```
+
+输出内容：
+
+```
+=============================================
+  Retrieval Evaluation Results
+=============================================
+  Total queries:     8620 (4382 positives)
+  Candidate pool:    8620
+  Encoding time:     37.44s
+  Search time:       0.49s (FAISS)
+  Queries/sec:       17536
+  ─────────────────────────
+  Recall@1            2.44%
+  Recall@5            10.57%
+  Recall@10           17.30%
+  Recall@50           43.18%
+  MRR:                0.0722
+=============================================
+```
+
+输出目录：`outputs/biencoder_mean_cosine/eval_retrieval/`
+- `recall_curve.png` — Recall@K 曲线
+- `retrieval_summary.json` — 检索指标 JSON
+- `embeddings.pt` — 向量缓存（二次加载跳过编码）
+
+> **注意：** 检索模式只在 BiEncoder 下有意义（CrossEncoder 不支持独立编码）。
+> **理解 Recall 数字：** 在 8620 条候选池中精确匹配唯一正确答案难度极高（随机猜测 Recall@1=0.01%），模型 Recall@1=2.44% 已是随机的 **244 倍**。实际工程中会配合 CrossEncoder rerank 使用。
 
 ---
 
