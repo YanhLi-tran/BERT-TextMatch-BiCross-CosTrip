@@ -33,6 +33,11 @@ class Trainer:
 
         # ---------- 损失函数 ----------
         self.loss_fn, self.use_triplet = get_loss_fn(args.loss, args.margin)
+        self.use_classify = args.classify
+
+        # 分类头模式使用 CrossEntropyLoss
+        if self.use_classify:
+            self.ce_loss = nn.CrossEntropyLoss()
 
         # ---------- 优化器 ----------
         self.optimizer = torch.optim.AdamW(
@@ -67,8 +72,9 @@ class Trainer:
         # 自动混合精度（AMP）支持
         self.scaler = torch.cuda.amp.GradScaler() if torch.cuda.is_available() else None
 
+        mode_str = "分类头" if args.classify else args.loss
         print(f"[训练器初始化] 设备: {self.device}")
-        print(f"[训练器初始化] 编码器: {args.encoder} | 池化: {args.pooling} | 损失: {args.loss}")
+        print(f"[训练器初始化] 编码器: {args.encoder} | 池化: {args.pooling} | 模式: {mode_str}")
 
         # ---------- 组合检查：CrossEncoder + cls + TripletLoss ----------
         if args.encoder == "crossencoder" and args.pooling == "cls" and args.loss == "triplet":
@@ -140,7 +146,41 @@ class Trainer:
         self.model.train()
         labels = batch["label"].to(self.device)
 
-        # ----- 前向传播（根据 encoder 类型） -----
+        # ----- 分类头模式（CrossEncoder + classify） -----
+        if self.use_classify:
+            input_ids = batch["input_ids"].to(self.device)
+            attention_mask = batch["attention_mask"].to(self.device)
+            token_type_ids = batch.get("token_type_ids", None)
+            if token_type_ids is not None:
+                token_type_ids = token_type_ids.to(self.device)
+
+            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+                logits = self.model(input_ids, attention_mask, token_type_ids)
+                loss = self.ce_loss(logits, labels)
+                preds = logits.argmax(dim=1)
+                acc = (preds == labels).float().mean().item()
+
+            # 反向传播
+            self.optimizer.zero_grad()
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
+                if self.args.max_grad_norm > 0:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.max_grad_norm)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                if self.args.max_grad_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.max_grad_norm)
+                self.optimizer.step()
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+            return loss.detach(), acc
+
+        # ----- 非分类模式：原逻辑 -----
         if self.args.encoder == "biencoder":
             s1_ids = batch["s1_input_ids"].to(self.device)
             s1_mask = batch["s1_attention_mask"].to(self.device)
@@ -312,6 +352,26 @@ class Trainer:
                          ncols=90)
         for batch in eval_pbar:
             labels = batch["label"].to(self.device)
+
+            # ----- 分类头模式 -----
+            if self.use_classify:
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                token_type_ids = batch.get("token_type_ids", None)
+                if token_type_ids is not None:
+                    token_type_ids = token_type_ids.to(self.device)
+                logits = self.model(input_ids, attention_mask, token_type_ids)
+                loss = self.ce_loss(logits, labels)
+                preds = logits.argmax(dim=1)
+                correct = (preds == labels).sum().item()
+                total = labels.size(0)
+                acc = correct / max(total, 1)
+                total_loss += loss.item() * total
+                total_correct += correct
+                total_samples += total
+                eval_pbar.set_postfix({"batch_acc": f"{acc:.3f}",
+                                       "avg_acc": f"{total_correct/max(total_samples,1):.3f}"})
+                continue
 
             if self.args.encoder == "biencoder":
                 s1_ids = batch["s1_input_ids"].to(self.device)

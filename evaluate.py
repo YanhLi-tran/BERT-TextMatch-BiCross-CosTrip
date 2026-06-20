@@ -355,12 +355,19 @@ def evaluate_retrieval(model, data_loader, encoder, device, data_path,
     top_k = max(ks)
 
     if use_faiss:
-        # FAISS 检索
-        index = faiss.IndexFlatIP(s1_embs.size(1))
-        s2_np = s2_embs.numpy().astype(np.float32)
+        # FAISS 检索（IndexIVFFlat 近似检索，加速 10-100 倍）
+        dim = s1_embs.size(1)
+        nlist = max(1, int(np.sqrt(N)))
+        nprobe = max(1, nlist // 10)
+
+        quantizer = faiss.IndexFlatIP(dim)
+        index = faiss.IndexIVFFlat(quantizer, dim, nlist, faiss.METRIC_INNER_PRODUCT)
+        index.train(s2_embs.numpy().astype(np.float32))
+        index.add(s2_embs.numpy().astype(np.float32))
+        index.nprobe = nprobe
+
         s1_np = s1_embs.numpy().astype(np.float32)
-        index.add(s2_np)                      # 加入候选向量
-        D, I = index.search(s1_np, top_k)     # 批量检索，I: (N, top_k)
+        D, I = index.search(s1_np, top_k)
     else:
         # 纯 PyTorch 暴力检索（降级方案）
         sim_matrix = torch.matmul(s1_embs, s2_embs.T)
@@ -405,7 +412,7 @@ def evaluate_retrieval(model, data_loader, encoder, device, data_path,
 
     search_time = time.time() - search_start
 
-    method = "FAISS" if use_faiss else "PyTorch(brute)"
+    method = "FAISS-IVFFlat" if use_faiss else "PyTorch(brute)"
     print(f"  [检索] 检索耗时: {search_time:.2f}s ({method}) | "
           f"{(N / search_time):.0f} 查询/秒")
 
@@ -431,7 +438,7 @@ def evaluate_retrieval(model, data_loader, encoder, device, data_path,
         "candidate_pool_size": N,
         "encoding_time_sec": round(encode_time, 2),
         "search_time_sec": round(search_time, 2),
-        "search_method": "FAISS" if use_faiss else "PyTorch(brute)",
+        "search_method": "FAISS-IVFFlat" if use_faiss else "PyTorch(brute)",
         "queries_per_sec": round(N / search_time, 1),
         "recall_at_k": {str(k): round(v, 4) for k, v in recall_at_k.items()},
         "mrr": round(mrr, 4),

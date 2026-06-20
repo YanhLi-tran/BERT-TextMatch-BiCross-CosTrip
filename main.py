@@ -63,8 +63,10 @@ def create_model(args):
         model = CrossEncoder(
             model_name=args.bert_model,
             pooling=args.pooling,
+            classify=args.classify,
         )
-        print(f"[模型] CrossEncoder | 池化方式: {args.pooling}")
+        mode = "分类头" if args.classify else "余弦嵌入"
+        print(f"[模型] CrossEncoder | 池化方式: {args.pooling} | 模式: {mode}")
     else:
         raise ValueError(f"不支持的编码器类型: {args.encoder}")
 
@@ -140,16 +142,22 @@ def main():
     if os.path.exists(best_model_path):
         val_acc, best_epoch = trainer.load_model_weights(best_model_path)
 
-        # 在验证集上搜索最优余弦相似度阈值
-        best_threshold, _ = trainer._find_best_threshold(val_loader)
+        # 分类头模式无需阈值搜索
+        if args.classify:
+            best_threshold = 0.5  # 占位，分类头不使用余弦阈值
+            test_loss, test_acc = trainer.evaluate(test_loader, desc="测试集")
+        else:
+            # 在验证集上搜索最优余弦相似度阈值
+            best_threshold, _ = trainer._find_best_threshold(val_loader)
+            # 用最优阈值评估测试集
+            test_loss, test_acc = trainer.evaluate(test_loader, desc="测试集",
+                                                    threshold=best_threshold)
 
-        # 用最优阈值评估测试集
-        test_loss, test_acc = trainer.evaluate(test_loader, desc="测试集",
-                                                threshold=best_threshold)
-        loss_str = f"{test_loss:.4f}" if args.loss == "cosine" else "N/A"
+        loss_str = f"{test_loss:.4f}" if (args.loss == "cosine" and not args.classify) else "N/A"
+        th_str = f" | 最优阈值: {best_threshold:.2f}" if not args.classify else ""
         print(f"\n{'='*60}")
         print(f"测试集结果 (最优模型 Epoch {best_epoch})")
-        print(f"  Val Acc: {val_acc:.4f} | 最优阈值: {best_threshold:.2f}")
+        print(f"  Val Acc: {val_acc:.4f}{th_str}")
         print(f"  Test Loss: {loss_str} | Test Acc: {test_acc:.4f}")
         print(f"{'='*60}\n")
     else:
