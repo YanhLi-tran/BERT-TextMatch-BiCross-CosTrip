@@ -71,7 +71,22 @@ python main.py `
     --margin 1.0
 ```
 
-### 1.5 CrossEncoder + CosineEmbeddingLoss
+### 1.5 BiEncoder + Online Hard Negative TripletLoss
+
+```powershell
+# ┌─────────────────────────────────────────────────────────────────────┐
+# │ Online Hard Negative: batch 内对每个 anchor 挑最难的负样本         │
+# │                       比随机采样效果好，工程上 TripletLoss 的标准   │
+# └─────────────────────────────────────────────────────────────────────┘
+python main.py `
+    --encoder biencoder `
+    --pooling mean `
+    --loss triplet `
+    --margin 0.5 `
+    --online_hard
+```
+
+### 1.6 CrossEncoder + CosineEmbeddingLoss
 
 ```powershell
 # ┌─────────────────────────────────────────────────────────────────────┐
@@ -87,13 +102,23 @@ python main.py `
     --margin 0.0
 ```
 
-### 1.6 CrossEncoder + CosineEmbeddingLoss（推荐尝鲜）
+### 1.6 CrossEncoder + Cosine + 分类头（推荐，当前最优 92.4%）
 
 ```powershell
 # ┌─────────────────────────────────────────────────────────────────────┐
-# │ CrossEncoder 利用跨注意力交互，理论上比 BiEncoder 效果更好          │
-# │ poolinig='mean' 通过 token_type_ids 分开池化，获得独立句表示        │
+# │ [CLS] + Linear(768,2) + CrossEntropyLoss                          │
+# │ 这是 CrossEncoder 的标准用法，利用 cross-attention + 分类头         │
+# │ 支持 --pooling cls/mean/max（已实现但实验统一用 mean 更一致）       │
 # └─────────────────────────────────────────────────────────────────────┘
+python main.py `
+    --encoder crossencoder `
+    --pooling cls `
+    --classify
+```
+
+### 1.7 CrossEncoder + CosineEmbeddingLoss（备选）
+
+```powershell
 python main.py `
     --encoder crossencoder `
     --pooling mean `
@@ -101,7 +126,7 @@ python main.py `
     --margin 0.0
 ```
 
-### 1.7 CrossEncoder + TripletLoss（不推荐）
+### 1.8 CrossEncoder + TripletLoss（不推荐）
 
 ```powershell
 # ┌─────────────────────────────────────────────────────────────────────┐
