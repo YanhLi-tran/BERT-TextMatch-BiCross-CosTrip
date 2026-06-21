@@ -144,7 +144,48 @@ class Trainer:
             acc: 当前 batch 的准确率（仅对 cosine loss 有意义）
         """
         self.model.train()
-        labels = batch["label"].to(self.device)
+        labels = batch.get("label", None)
+        if labels is not None:
+            labels = labels.to(self.device)
+
+        # ----- 预构建三元组模式（TripletDataset） -----
+        if "anc_input_ids" in batch:
+            anc_ids = batch["anc_input_ids"].to(self.device)
+            anc_mask = batch["anc_attention_mask"].to(self.device)
+            pos_ids = batch["pos_input_ids"].to(self.device)
+            pos_mask = batch["pos_attention_mask"].to(self.device)
+            neg_ids = batch["neg_input_ids"].to(self.device)
+            neg_mask = batch["neg_attention_mask"].to(self.device)
+
+            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+                anc_emb = self.model.forward(anc_ids, anc_mask)
+                pos_emb = self.model.forward(pos_ids, pos_mask)
+                neg_emb = self.model.forward(neg_ids, neg_mask)
+                # L2 归一化，让欧氏距离与余弦距离等价
+                anc_emb = torch.nn.functional.normalize(anc_emb, p=2, dim=1)
+                pos_emb = torch.nn.functional.normalize(pos_emb, p=2, dim=1)
+                neg_emb = torch.nn.functional.normalize(neg_emb, p=2, dim=1)
+                loss = self.loss_fn(anc_emb, pos_emb, neg_emb)
+
+            # 反向传播 + 梯度裁剪
+            self.optimizer.zero_grad()
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
+                if self.args.max_grad_norm > 0:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.max_grad_norm)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                if self.args.max_grad_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.max_grad_norm)
+                self.optimizer.step()
+
+            if self.scheduler is not None:
+                self.scheduler.step()
+
+            return loss.detach(), 0.0
 
         # ----- 分类头模式（CrossEncoder + classify） -----
         if self.use_classify:
@@ -198,6 +239,10 @@ class Trainer:
                         # batch 中无正样本，返回 0 损失
                         return torch.tensor(0.0, device=self.device), 0.0
                     anchor, positive, negative = triplet_data
+                    # L2 归一化，让欧氏距离与余弦距离等价
+                    anchor = torch.nn.functional.normalize(anchor, p=2, dim=1)
+                    positive = torch.nn.functional.normalize(positive, p=2, dim=1)
+                    negative = torch.nn.functional.normalize(negative, p=2, dim=1)
                     loss = self.loss_fn(anchor, positive, negative)
 
                 # 计算准确率（cosine loss 时才有意义）
@@ -228,6 +273,9 @@ class Trainer:
                     if triplet_data[0] is None:
                         return torch.tensor(0.0, device=self.device), 0.0
                     anchor, positive, negative = triplet_data
+                    anchor = torch.nn.functional.normalize(anchor, p=2, dim=1)
+                    positive = torch.nn.functional.normalize(positive, p=2, dim=1)
+                    negative = torch.nn.functional.normalize(negative, p=2, dim=1)
                     loss = self.loss_fn(anchor, positive, negative)
                     acc = 0.0
 

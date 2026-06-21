@@ -27,6 +27,8 @@ def get_args():
                         help="损失函数：cosine / triplet（classify 模式下忽略）")
     parser.add_argument("--classify", action="store_true",
                         help="使用分类头（仅 CrossEncoder，[CLS]+Linear+CrossEntropyLoss，不与 --loss 同时使用）")
+    parser.add_argument("--triplet_data", type=str, default=None,
+                        help="预构建的三元组 JSONL 路径（用于 TripletLoss 训练）")
 
     # -------- 训练超参数 --------
     parser.add_argument("--epochs", type=int, default=1000,
