@@ -173,26 +173,101 @@ class TextMatchDataset(Dataset):
             return result
 
 
+class TripletDataset(Dataset):
+    """
+    三元组数据集 —— 用于 TripletLoss 训练
+    
+    数据格式: JSONL，每条包含 anchor, positive, negative
+    输出: 三个句子的 BiEncoder 编码（input_ids + attention_mask）
+    """
+
+    def __init__(self, data, tokenizer, max_length=128):
+        """
+        参数:
+            data: list[dict]，每条包含 anchor, positive, negative
+            tokenizer: 分词器
+            max_length: 最大序列长度
+        """
+        self.data = data
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        anchor, positive, negative = item["anchor"], item["positive"], item["negative"]
+
+        # 编码三条句子
+        anc_enc = self.tokenizer(anchor, truncation=True, padding="max_length",
+                                  max_length=self.max_length, return_tensors="pt")
+        pos_enc = self.tokenizer(positive, truncation=True, padding="max_length",
+                                  max_length=self.max_length, return_tensors="pt")
+        neg_enc = self.tokenizer(negative, truncation=True, padding="max_length",
+                                  max_length=self.max_length, return_tensors="pt")
+
+        return {
+            "anc_input_ids": anc_enc["input_ids"].squeeze(0),
+            "anc_attention_mask": anc_enc["attention_mask"].squeeze(0),
+            "pos_input_ids": pos_enc["input_ids"].squeeze(0),
+            "pos_attention_mask": pos_enc["attention_mask"].squeeze(0),
+            "neg_input_ids": neg_enc["input_ids"].squeeze(0),
+            "neg_attention_mask": neg_enc["attention_mask"].squeeze(0),
+        }
+
+    @staticmethod
+    def collate_fn(batch):
+        """堆叠三元组 batch"""
+        return {
+            "anc_input_ids": torch.stack([b["anc_input_ids"] for b in batch]),
+            "anc_attention_mask": torch.stack([b["anc_attention_mask"] for b in batch]),
+            "pos_input_ids": torch.stack([b["pos_input_ids"] for b in batch]),
+            "pos_attention_mask": torch.stack([b["pos_attention_mask"] for b in batch]),
+            "neg_input_ids": torch.stack([b["neg_input_ids"] for b in batch]),
+            "neg_attention_mask": torch.stack([b["neg_attention_mask"] for b in batch]),
+        }
+
+
 def get_dataloaders(args, tokenizer):
     """
     加载数据集并创建 DataLoader
+    当指定 --triplet_data 时，训练使用预构建的三元组数据
     自动计算 p95 作为 max_length（若未指定）
     
     返回:
         train_loader, val_loader, test_loader, p95_length
     """
     # 1. 加载原始数据
-    train_data = load_jsonl(f"{args.data_dir}/train.jsonl")
+    use_triplet = args.triplet_data is not None and args.loss == "triplet"
+
+    if use_triplet:
+        # 加载预构建三元组作为训练集
+        print(f"[数据加载] 使用三元组训练数据: {args.triplet_data}")
+        train_data = load_jsonl(args.triplet_data)
+        print(f"[数据加载] 三元组训练集: {len(train_data)} 条")
+    else:
+        train_data = load_jsonl(f"{args.data_dir}/train.jsonl")
+        print(f"[数据加载] 训练集: {len(train_data)} 条")
+
     val_data = load_jsonl(f"{args.data_dir}/validation.jsonl")
     test_data = load_jsonl(f"{args.data_dir}/test.jsonl")
 
-    print(f"[数据加载] 训练集: {len(train_data)} 条")
-    print(f"[数据加载] 验证集: {len(val_data)} 条")
-    print(f"[数据加载] 测试集: {len(test_data)} 条")
-
     # 2. 计算 p95 长度（若用户未指定 max_length）
     if args.max_length is None:
-        p95_length = compute_p95_length(train_data, tokenizer, encoder_type=args.encoder)
+        if use_triplet:
+            # 三元组数据：对 anchor/positive/negative 都取最长
+            sampled = random.sample(train_data, min(5000, len(train_data)))
+            lengths = []
+            for item in sampled:
+                for key in ["anchor", "positive", "negative"]:
+                    tokens = tokenizer.tokenize(item[key])
+                    lengths.append(len(tokens) + 2)
+            lengths = sorted(lengths)
+            p95_length = lengths[int(len(lengths) * 0.95)]
+            print(f"[数据长度分析 - triplet] 采样 {len(sampled)} 条 | P95={p95_length}")
+        else:
+            p95_length = compute_p95_length(train_data, tokenizer, encoder_type=args.encoder)
         max_length = p95_length
     else:
         max_length = args.max_length
@@ -200,12 +275,18 @@ def get_dataloaders(args, tokenizer):
         print(f"[数据加载] 使用用户指定的 max_length = {max_length}")
 
     # 3. 创建 Dataset
-    train_dataset = TextMatchDataset(
-        train_data, tokenizer,
-        encoder_type=args.encoder,
-        max_length=max_length,
-        pooling=args.pooling,
-    )
+    if use_triplet:
+        train_dataset = TripletDataset(
+            train_data, tokenizer,
+            max_length=max_length,
+        )
+    else:
+        train_dataset = TextMatchDataset(
+            train_data, tokenizer,
+            encoder_type=args.encoder,
+            max_length=max_length,
+            pooling=args.pooling,
+        )
     val_dataset = TextMatchDataset(
         val_data, tokenizer,
         encoder_type=args.encoder,
@@ -220,12 +301,14 @@ def get_dataloaders(args, tokenizer):
     )
 
     # 4. 创建 DataLoader
+    train_collate = TripletDataset.collate_fn if use_triplet else \
+        (lambda b: TextMatchDataset.collate_fn(b, args.encoder))
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        collate_fn=lambda b: TextMatchDataset.collate_fn(b, args.encoder),
+        collate_fn=train_collate,
     )
     val_loader = DataLoader(
         val_dataset,
