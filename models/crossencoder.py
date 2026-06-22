@@ -63,12 +63,24 @@ class CrossEncoder(nn.Module):
             token_type_ids=token_type_ids,
         )
         last_hidden = outputs.last_hidden_state  # (batch_size, seq_len, hidden_dim)
-        cls_vec = last_hidden[:, 0, :]           # (batch_size, hidden_dim)
 
-        # 分类头模式：直接输出 logits
+        # 分类头模式：支持多种池化
         if self.classify:
-            logits = self.classifier(cls_vec)
+            if self.pooling == "cls":
+                pooled = last_hidden[:, 0, :]                                # (batch_size, dim)
+            elif self.pooling == "mean":
+                mask = attention_mask.unsqueeze(-1).float()
+                pooled = (last_hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
+            elif self.pooling == "max":
+                mask = attention_mask.unsqueeze(-1).float()
+                last_hidden = last_hidden + (1.0 - mask) * -1e9
+                pooled, _ = last_hidden.max(dim=1)
+            else:
+                raise ValueError(f"不支持的池化方式: {self.pooling}")
+            logits = self.classifier(pooled)
             return logits
+
+        cls_vec = last_hidden[:, 0, :]
 
         # 非分类模式：提取句子向量（原逻辑）
         if self.pooling == "cls":
