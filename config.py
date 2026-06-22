@@ -55,6 +55,8 @@ def get_args():
                         help="每多少步(batch)保存一次 checkpoint")
     parser.add_argument("--eval_every", type=int, default=1,
                         help="每多少轮在验证集上评估一次（用于最优模型筛选）")
+    parser.add_argument("--patience", type=int, default=5,
+                        help="Early Stopping 耐心值，验证集准确率连续 patience 轮不上升则自动停止训练（默认 5，0 为关闭）")
     parser.add_argument("--resume", type=str, default=None,
                         help="从 checkpoint 恢复训练，传入 checkpoint_step_N.pt 路径")
     parser.add_argument("--max_length", type=int, default=None,

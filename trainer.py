@@ -66,6 +66,8 @@ class Trainer:
         self.val_metrics = defaultdict(list)     # 验证指标
         self.best_val_acc = 0.0                  # 最优验证准确率
         self.best_epoch = 0                      # 最优模型所在轮次
+        self.epochs_no_improve = 0               # Early Stopping 计数器
+        self.patience = args.patience            # Early Stopping 耐心值
         self.start_epoch = 0                     # 起始轮次（resume 时使用）
         self._latest_ckpt_path = None            # 最新 checkpoint 路径（用于覆盖）
 
@@ -497,6 +499,8 @@ class Trainer:
         print(f"\n{'='*60}")
         print(f"开始训练: {self.run_name}")
         print(f"  总轮数: {epochs} | 每轮步数: {len(train_loader)} | 总步数: {total_steps}")
+        if self.patience > 0:
+            print(f"  Early Stopping: 连续 {self.patience} 轮 Val Acc 不提升时自动停止")
         print(f"{'='*60}\n")
 
         # ===== 外层进度条：整体训练进度 =====
@@ -588,8 +592,17 @@ class Trainer:
                 if val_acc > self.best_val_acc:
                     self.best_val_acc = val_acc
                     self.best_epoch = epoch + 1
+                    self.epochs_no_improve = 0
                     self._save_model("best_model.pt", epoch + 1, val_acc)
                     tqdm.write(f"  ★ 新最优模型! Epoch {epoch+1} | Val Acc: {val_acc:.4f}")
+                else:
+                    # Early Stopping: 连续 patience 轮不提升则停止
+                    if self.patience > 0:
+                        self.epochs_no_improve += 1
+                        if self.epochs_no_improve >= self.patience:
+                            tqdm.write(f"\n  ◆ Early Stopping! 连续 {self.patience} 轮 Val Acc 未提升（当前 {val_acc:.4f}），训练自动结束")
+                            tqdm.write(f"  最优模型: Epoch {self.best_epoch} | Val Acc: {self.best_val_acc:.4f}")
+                            break
 
                 loss_str = f"{val_loss:.4f}" if self.args.loss == "cosine" else "N/A"
                 tqdm.write(f"[Epoch {epoch+1}/{epochs}] "
