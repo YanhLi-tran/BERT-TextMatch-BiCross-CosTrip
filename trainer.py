@@ -123,11 +123,23 @@ class Trainer:
         anchor = emb1[pos_mask]      # (n_pos, hidden_dim)
         positive = emb2[pos_mask]    # (n_pos, hidden_dim)
 
-        # 从负样本索引中随机选取
-        neg_indices_all = torch.where(neg_mask)[0]  # 所有负样本的索引
-        pick = torch.randint(0, n_neg, (n_pos,), device=self.device)
-        neg_indices = neg_indices_all[pick]
-        negative = emb2[neg_indices]  # (n_pos, hidden_dim)
+        # 所有负样本的向量
+        neg_embs = emb2[neg_mask]    # (n_neg, hidden_dim)
+
+        if self.args.online_hard:
+            # Online Hard Negative Mining:
+            # 对每个 anchor，在 batch 内所有负样本中挑余弦相似度最高的
+            anchor_norm = torch.nn.functional.normalize(anchor, p=2, dim=1)   # (n_pos, dim)
+            neg_embs_norm = torch.nn.functional.normalize(neg_embs, p=2, dim=1)  # (n_neg, dim)
+            sim_matrix = torch.matmul(anchor_norm, neg_embs_norm.T)           # (n_pos, n_neg)
+            hardest_idx = sim_matrix.argmax(dim=1)                            # (n_pos,)
+            negative = neg_embs[hardest_idx]
+        else:
+            # 随机采样（旧方案）
+            neg_indices_all = torch.where(neg_mask)[0]
+            pick = torch.randint(0, n_neg, (n_pos,), device=self.device)
+            neg_indices = neg_indices_all[pick]
+            negative = emb2[neg_indices]
 
         return anchor, positive, negative
 
