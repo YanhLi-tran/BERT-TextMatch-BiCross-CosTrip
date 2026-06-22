@@ -92,6 +92,10 @@ def main():
     print(f"  训练轮数: {args.epochs}")
     print(f"  批次大小: {args.batch_size}")
     print(f"  学习率: {args.learning_rate}")
+    if args.triplet_data:
+        print(f"  三元组数据: {args.triplet_data}")
+    if args.online_hard:
+        print(f"  负采样: Online Hard Negative Mining")
     print(f"{'='*60}\n")
 
     # 2. 设置随机种子
