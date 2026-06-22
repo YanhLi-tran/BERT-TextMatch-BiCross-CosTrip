@@ -474,6 +474,11 @@ def evaluate():
 
     print(f"  编码器: {encoder} | 池化: {pooling} | run: {run_name}")
 
+    # 检测是否 classify 模式
+    classify = saved_args.classify if saved_args and hasattr(saved_args, "classify") else False
+    if classify:
+        print(f"  模式: 分类头 (CrossEntropyLoss)")
+
     # ----- 2. 创建模型并加载权重 -----
     print(f"[2/6] 创建模型 ...")
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -481,7 +486,7 @@ def evaluate():
     if encoder == "biencoder":
         model = BiEncoder(model_name=bert_model, pooling=pooling)
     else:
-        model = CrossEncoder(model_name=bert_model, pooling=pooling)
+        model = CrossEncoder(model_name=bert_model, pooling=pooling, classify=classify)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
@@ -547,8 +552,7 @@ def evaluate():
                 save_path=os.path.join(output_dir, "recall_curve.png"),
             )
 
-            # 保存结果
-            import json
+            # 保存结果（全局已 import json）
             ret_path = os.path.join(output_dir, "retrieval_summary.json")
             with open(ret_path, "w", encoding="utf-8") as f:
                 json.dump(ret_results, f, indent=2, ensure_ascii=False)
@@ -575,6 +579,17 @@ def evaluate():
             s2_ids = batch["s2_input_ids"].to(device)
             s2_mask = batch["s2_attention_mask"].to(device)
             emb1, emb2 = model.encode_pair(s1_ids, s1_mask, s2_ids, s2_mask)
+            sim = model.compute_cosine_similarity(emb1, emb2)
+        elif classify:
+            # 分类头模式：直接拿 logits argmax 作为预测分数
+            ids = batch["input_ids"].to(device)
+            mask = batch["attention_mask"].to(device)
+            tids = batch.get("token_type_ids", None)
+            if tids is not None:
+                tids = tids.to(device)
+            logits = model(ids, mask, tids)
+            probs = torch.softmax(logits, dim=1)[:, 1]  # 正类的概率作为分数
+            sim = probs
         else:
             ids = batch["input_ids"].to(device)
             mask = batch["attention_mask"].to(device)
@@ -582,8 +597,8 @@ def evaluate():
             if tids is not None:
                 tids = tids.to(device)
             emb1, emb2 = model(ids, mask, tids)
+            sim = model.compute_cosine_similarity(emb1, emb2)
 
-        sim = model.compute_cosine_similarity(emb1, emb2)
         all_sims.append(sim.cpu().numpy())
         all_labels.append(labels.cpu().numpy())
         total_pairs += batch_size
