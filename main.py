@@ -166,6 +166,21 @@ def main():
         print(f"  Val Acc: {val_acc:.4f}{th_str}")
         print(f"  Test Loss: {loss_str} | Test Acc: {test_acc:.4f}")
         print(f"{'='*60}\n")
+        
+        # 12. 完整指标评估（调用 evaluate.py 生成混淆矩阵、ROC/PR 曲线等）
+        try:
+            print("\n[完整评估] 生成混淆矩阵、ROC/PR 曲线 ...")
+            import subprocess
+            eval_cmd = [
+                sys.executable, "evaluate.py",
+                "--checkpoint", best_model_path,
+                "--data_split", "test",
+                "--output_dir", os.path.join(trainer.output_dir, "eval"),
+            ]
+            subprocess.run(eval_cmd, check=True)
+            print(f"[完整评估] 完成，结果已保存至: {os.path.join(trainer.output_dir, 'eval')}")
+        except Exception as e:
+            print(f"[完整评估] 跳过（{e}）")
     else:
         print("[警告] 未找到最优模型，跳过测试集评估")
         test_loss, test_acc, best_threshold = 0.0, 0.0, 0.5
@@ -194,6 +209,21 @@ def main():
         f.write(f"最优余弦阈值: {best_threshold:.2f}\n")
         f.write(f"测试集准确率: {test_acc:.4f}\n")
     print(f"[结果] 摘要已保存: {summary_path}")
+
+    # 12. 完整指标评估（调用 evaluate.py 生成混淆矩阵、ROC/PR 曲线等）
+    try:
+        print("\n[完整评估] 生成混淆矩阵、ROC/PR 曲线 ...")
+        import subprocess
+        eval_cmd = [
+            sys.executable, "evaluate.py",
+            "--checkpoint", best_model_path,
+            "--data_split", "test",
+            "--output_dir", os.path.join(trainer.output_dir, "eval"),
+        ]
+        subprocess.run(eval_cmd, check=True)
+        print(f"[完整评估] 完成，结果已保存至: {os.path.join(trainer.output_dir, 'eval')}")
+    except Exception as e:
+        print(f"[完整评估] 跳过（{e}）")
 
     print(f"\n[完成] 所有输出已保存到: {trainer.output_dir}")
     return trainer.best_val_acc
