@@ -634,6 +634,8 @@ class Trainer:
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "val_acc": acc,
+            "best_val_acc": self.best_val_acc,      # 保存历史最优
+            "best_epoch": self.best_epoch,
             "args": self.args,
             "run_name": self.run_name,
         }, path)
@@ -661,6 +663,11 @@ class Trainer:
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.start_epoch = checkpoint["epoch"]
+        self.epochs_no_improve = 0  # 续训重置 Early Stopping 计数器
+        if "best_val_acc" in checkpoint:
+            self.best_val_acc = checkpoint["best_val_acc"]
+            self.best_epoch = checkpoint["best_epoch"]
+            print(f"  历史最优: Epoch {self.best_epoch} | Val Acc: {self.best_val_acc:.4f}")
         print(f"[加载 Checkpoint] 从 Epoch {self.start_epoch} 恢复")
         return checkpoint
 
