@@ -171,7 +171,7 @@ class Trainer:
             neg_ids = batch["neg_input_ids"].to(self.device)
             neg_mask = batch["neg_attention_mask"].to(self.device)
 
-            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+            with torch.amp.autocast("cuda", enabled=(self.scaler is not None)):
                 anc_emb = self.model.forward(anc_ids, anc_mask)
                 pos_emb = self.model.forward(pos_ids, pos_mask)
                 neg_emb = self.model.forward(neg_ids, neg_mask)
@@ -209,7 +209,7 @@ class Trainer:
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.to(self.device)
 
-            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+            with torch.amp.autocast("cuda", enabled=(self.scaler is not None)):
                 logits = self.model(input_ids, attention_mask, token_type_ids)
                 loss = self.ce_loss(logits, labels)
                 preds = logits.argmax(dim=1)
@@ -242,7 +242,7 @@ class Trainer:
             s2_ids = batch["s2_input_ids"].to(self.device)
             s2_mask = batch["s2_attention_mask"].to(self.device)
 
-            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+            with torch.amp.autocast("cuda", enabled=(self.scaler is not None)):
                 emb1, emb2 = self.model.encode_pair(s1_ids, s1_mask, s2_ids, s2_mask)
 
                 if self.args.loss == "cosine":
@@ -273,7 +273,7 @@ class Trainer:
             if token_type_ids is not None:
                 token_type_ids = token_type_ids.to(self.device)
 
-            with torch.cuda.amp.autocast(enabled=(self.scaler is not None)):
+            with torch.amp.autocast("cuda", enabled=(self.scaler is not None)):
                 emb1, emb2 = self.model(input_ids, attention_mask, token_type_ids)
 
                 if self.args.loss == "cosine":
