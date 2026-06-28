@@ -430,7 +430,7 @@ python evaluate.py --checkpoint outputs/biencoder_mean_cosine/best_model.pt --da
 | `--loss` | `cosine` | 损失函数：cosine / triplet |
 | `--margin` | `cosine=0.0 / triplet=1.0` | 损失函数的 margin（自动根据 loss 类型设置） |
 | `--epochs` | `1000` | 总训练轮数 |
-| `--batch_size` | `32` | 训练批次大小 |
+| `--batch_size` | `64` | 训练批次大小 |
 | `--eval_batch_size` | `64` | 评估批次大小 |
 | `--learning_rate` | `2e-5` | 学习率 |
 | `--weight_decay` | `0.01` | 权重衰减 |
