@@ -195,7 +195,7 @@ TripletLoss 实验经历了三个阶段的演进：
 | 2 | Offline Hard Negative Mining（加载余弦权重） | 短暂 87% → 崩至 70%+ | margin=1.0 太大冲散空间 |
 | 3 | **Online Hard Negative Mining（从零训练）** | **93.48%**（epoch 46, batch=64） | batch 内动态挑最难负样本，标准做法 |
 
-**Online Hard Negative Mining** 在每个 batch 内，对每个正样本的 anchor，在所有负样本中挑余弦相似度最高的作为负样本。负样本随训练动态变化，模型越强对手越强，最终达到 **93.48%**（batch=64, epoch 46），成为全部实验中的最佳方案。
+**Online Hard Negative Mining** 在每个 batch 内，对每个正样本的 anchor，在所有负样本中挑余弦相似度最高的作为负样本。负样本随训练动态变化，模型越强对手越强，最终达到 **93.48%**（batch=64, epoch 46），是 BiEncoder 中的最佳方案（次于 CrossEncoder + CLS + 分类头 94.22%）。
 
 **后续优化方向：**
 1. **两阶段训练** — 先用 Cosine 预训练，再加载权重切 TripletLoss + Hard Negative 精调（需 margin=0.5, lr=5e-6）
