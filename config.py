@@ -35,7 +35,7 @@ def get_args():
     # -------- 训练超参数 --------
     parser.add_argument("--epochs", type=int, default=1000,
                         help="总训练轮数")
-    parser.add_argument("--batch_size", type=int, default=32,
+    parser.add_argument("--batch_size", type=int, default=64,
                         help="训练批次大小")
     parser.add_argument("--eval_batch_size", type=int, default=64,
                         help="评估批次大小")
