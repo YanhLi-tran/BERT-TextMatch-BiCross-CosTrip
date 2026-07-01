@@ -125,7 +125,9 @@ def main():
     # 6. 创建训练器
     # run_name: "{encoder}_{pooling}_{loss}"，确保不同参数组合输出不覆盖
     mode_tag = "classify" if args.classify else args.loss
-    run_name = f"{args.encoder}_{args.pooling}_{mode_tag}"
+    # 从路径中提取模型简称，如 bert-base-chinese -> bert, RoBERTa-Chinese -> roberta
+    model_short = os.path.basename(args.bert_model).lower().replace("-chinese", "").replace("-base", "")
+    run_name = f"{model_short}_{args.encoder}_{args.pooling}_{mode_tag}"
     trainer = Trainer(model, args, run_name=run_name)
 
     # 6.5 从 checkpoint 恢复训练（如果指定了 --resume）
